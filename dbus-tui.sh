@@ -134,9 +134,10 @@ function select_interface() {
 
 function select_method_or_property() {
     # Retrieve methods and properties, store them into arrays
-    IFS=$'\n' read -r -d '' -a methods < <(busctl "$BUS_TYPE" --xml-interface introspect "$BUS_NAME" "$BUS_OBJECT" | xmllint --xpath "//interface[@name=\"$BUS_INTERFACE\"]/method/@name" - 2>/dev/null | awk -F'"' '{for (i=2; i<=NF; i+=2) print $(i)}' && printf '\0')
-    IFS=$'\n' read -r -d '' -a properties < <(busctl "$BUS_TYPE" --xml-interface introspect "$BUS_NAME" "$BUS_OBJECT" | xmllint --xpath "//interface[@name=\"$BUS_INTERFACE\"]/property/@name" - 2>/dev/null | awk -F'"' '{for (i=2; i<=NF; i+=2) print $(i)}' && printf '\0')
-    IFS=$'\n' read -r -d '' -a signals < <(busctl "$BUS_TYPE" --xml-interface introspect "$BUS_NAME" "$BUS_OBJECT" | xmllint --xpath "//interface[@name=\"$BUS_INTERFACE\"]/signal/@name" - 2>/dev/null | awk -F'"' '{for (i=2; i<=NF; i+=2) print $(i)}' && printf '\0')
+    local interface=$(busctl "$BUS_TYPE" --xml-interface introspect "$BUS_NAME" "$BUS_OBJECT")
+    IFS=$'\n' read -r -d '' -a methods < <(xmllint --xpath "//interface[@name=\"$BUS_INTERFACE\"]/method/@name" - <<< "$interface" 2>/dev/null | awk -F'"' '{for (i=2; i<=NF; i+=2) print $(i)}' && printf '\0')
+    IFS=$'\n' read -r -d '' -a properties < <(xmllint --xpath "//interface[@name=\"$BUS_INTERFACE\"]/property/@name" - <<< "$interface" 2>/dev/null | awk -F'"' '{for (i=2; i<=NF; i+=2) print $(i)}' && printf '\0')
+    IFS=$'\n' read -r -d '' -a signals < <(xmllint --xpath "//interface[@name=\"$BUS_INTERFACE\"]/signal/@name" - <<< "$interface" 2>/dev/null | awk -F'"' '{for (i=2; i<=NF; i+=2) print $(i)}' && printf '\0')
     declare -p signals >&2
 
     # Prepare dialog menu items
@@ -177,17 +178,22 @@ function select_method_or_property() {
         return 1
     elif [ "$selection" -lt "${#methods[@]}" ]; then
         BUS_METHOD=${methods[$selection]}
-        dialog --title "Selected Method: $BUS_METHOD" --msgbox "FIXME: create method dialog and show response?" 0 0
+        method_signature=$(xmllint --xpath "//interface[@name=\"$BUS_INTERFACE\"]/method[@name=\"$BUS_METHOD\"]" - <<< "$interface")
+
+        dialog --title "Selected Method: $BUS_METHOD" --msgbox "FIXME: create method dialog and show response?\n\n$method_signature" 0 0
     elif [ $(( selection - ${#methods[@]} )) -lt "${#properties[@]}" ]; then
         local property_idx=$(( selection - ${#methods[@]} ))
         BUS_PROPERTY="${properties[$property_idx]}"
+        property_signature=$(xmllint --xpath "//interface[@name=\"$BUS_INTERFACE\"]/property[@name=\"$BUS_PROPERTY\"]" - <<< "$interface")
+
         # FIXME: Can be also write property
         local property_value=$(busctl "$BUS_TYPE" get-property "$BUS_NAME" "$BUS_OBJECT" "$BUS_INTERFACE" "$BUS_PROPERTY")
-        dialog --title "Selected Property: $BUS_PROPERTY" --msgbox "$property_value" 0 0
+        dialog --title "Selected Property: $BUS_PROPERTY" --msgbox "$property_signature\n\n$property_value" 0 0
     else
         local signal_idx=$(( selection - ${#methods[@]} - ${#properties[@]} ))
         BUS_SIGNAL="${signals[signal_idx]}"
-        dialog --title "Selected Signal $BUS_SIGNAL" --msgbox "FIXME: emit signal?" 0 0
+        signal_signature=$(xmllint --xpath "//interface[@name=\"$BUS_INTERFACE\"]/signal[@name=\"$BUS_SIGNAL\"]" - <<< "$interface")
+        dialog --title "Selected Signal $BUS_SIGNAL" --msgbox "FIXME: emit signal?\n\n$signal_signature" 0 0
 
     fi
 }
