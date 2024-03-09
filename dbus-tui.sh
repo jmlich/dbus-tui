@@ -192,10 +192,15 @@ function select_method_or_property() {
     fi
 }
 
-if ! command -v dialog &> /dev/null; then
-    echo "Error: install dialog first" >&2
-    exit 1
-fi
+declare -a commands=('dialog' 'xmllint' 'jq')
+
+for cmd in "${commands[@]}"; do
+    if ! command -v "$cmd" &> /dev/null; then
+        echo "Error: dependency '$cmd' is missing" >&2
+        exit 1
+    fi
+done
+
 
 while /bin/true; do
 
