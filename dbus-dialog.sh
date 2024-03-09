@@ -27,6 +27,10 @@ function select_bus_type() {
 
     exec 3>&-
 
+    if [ -z "$choice" ]; then
+        return 1
+    fi
+
     BUS_TYPE="${choice_to_opt[$choice]}"
 }
 
@@ -41,6 +45,12 @@ function select_bus() {
         dialog_args+=("$bus_name" "$bus_process")
     done < <(busctl "$BUS_TYPE" --json=short | jq -r '.[] | [.name, (.unit // "(empty)")] | @tsv')
 
+    if [ "${#dialog_args[@]}" -eq 0 ]; then
+        echo "Error: No bus to display in dialog" >&2
+        unset BUS_TYPE
+        return 2;
+    fi
+
     # Display the dialog menu
     exec 3>&1
     BUS_NAME=$(dialog --clear --backtitle "Select a service" \
@@ -49,6 +59,11 @@ function select_bus() {
                    "${dialog_args[@]}" \
                    2>&1 1>&3)
     exec 3>&-
+
+    if [ -z "$BUS_NAME" ]; then
+        unset BUS_TYPE
+        return 1
+    fi
 
 }
 
@@ -60,6 +75,12 @@ function select_object() {
         dialog_args+=("$i" "${bus_objects[$i]}")
     done
 
+    if [ "${#dialog_args[@]}" -eq 0 ]; then
+        echo "Error: No object to display in dialog" >&2
+        unset BUS_NAME
+        return 2;
+    fi
+
     # Display the dialog menu
     exec 3>&1
     selection=$(dialog --clear --backtitle "Select a D-Bus object" \
@@ -69,18 +90,29 @@ function select_object() {
                        2>&1 1>&3)
     exec 3>&-
 
+    if [[ -z "$selection" ]]; then
+        unset BUS_NAME
+        return 1
+    fi
+
     BUS_OBJECT="${bus_objects[$selection]}"
 }
 
 function select_interface() {
 
-    IFS=$'\n' read -r -d '' -a interfaces < <(busctl "$BUS_TYPE" --xml-interface introspect "$BUS_NAME" "$BUS_OBJECT" | xmllint --xpath '//interface/@name' - | awk -F'"' '{for (i=2; i<=NF; i+=2) print $(i)}' && printf '\0')
+    IFS=$'\n' read -r -d '' -a interfaces < <(busctl "$BUS_TYPE" --xml-interface introspect "$BUS_NAME" "$BUS_OBJECT" | xmllint --xpath '//interface/@name' - 2> /dev/null | awk -F'"' '{for (i=2; i<=NF; i+=2) print $(i)}' && printf '\0')
 
     # Prepare dialog arguments
     declare -a dialog_args=()
     for i in "${!interfaces[@]}"; do
         dialog_args+=("$i" "${interfaces[$i]}")
     done
+
+    if [ "${#dialog_args[@]}" -eq 0 ]; then
+        echo "Error: No interface to display in dialog" >&2
+        unset BUS_OBJECT
+        return 2;
+    fi
 
     # Display the dialog menu
     exec 3>&1
@@ -91,6 +123,11 @@ function select_interface() {
                        2>&1 1>&3)
     exec 3>&-
 
+    if [ -z "$selection" ]; then
+        unset BUS_OBJECT
+        return 1
+    fi
+
     # Set the BUS_INTERFACE variable based on the selection
     BUS_INTERFACE="${interfaces[$selection]}"
 }
@@ -99,6 +136,8 @@ function select_method_or_property() {
     # Retrieve methods and properties, store them into arrays
     IFS=$'\n' read -r -d '' -a methods < <(busctl "$BUS_TYPE" --xml-interface introspect "$BUS_NAME" "$BUS_OBJECT" | xmllint --xpath "//interface[@name=\"$BUS_INTERFACE\"]/method/@name" - 2>/dev/null | awk -F'"' '{for (i=2; i<=NF; i+=2) print $(i)}' && printf '\0')
     IFS=$'\n' read -r -d '' -a properties < <(busctl "$BUS_TYPE" --xml-interface introspect "$BUS_NAME" "$BUS_OBJECT" | xmllint --xpath "//interface[@name=\"$BUS_INTERFACE\"]/property/@name" - 2>/dev/null | awk -F'"' '{for (i=2; i<=NF; i+=2) print $(i)}' && printf '\0')
+    IFS=$'\n' read -r -d '' -a signals < <(busctl "$BUS_TYPE" --xml-interface introspect "$BUS_NAME" "$BUS_OBJECT" | xmllint --xpath "//interface[@name=\"$BUS_INTERFACE\"]/signal/@name" - 2>/dev/null | awk -F'"' '{for (i=2; i<=NF; i+=2) print $(i)}' && printf '\0')
+    declare -p signals >&2
 
     # Prepare dialog menu items
     declare -a dialog_items=()
@@ -112,6 +151,17 @@ function select_method_or_property() {
         ((index++))
     done
 
+    for signal in "${signals[@]}"; do
+        dialog_items+=("$index" "Signal: $signal")
+        ((index++))
+    done
+
+    if [ "${#dialog_items[@]}" -eq 0 ]; then
+        echo "Error: No method/property/signal to display in dialog" >&2
+        unset BUS_INTERFACE
+        return 2;
+    fi
+
     # Display the dialog menu
     exec 3>&1
     selection=$(dialog --clear --backtitle "Select a Method or Property" \
@@ -123,15 +173,22 @@ function select_method_or_property() {
 
     # Process the selection
     if [ -z "$selection" ]; then
-        echo "No selection made."
-        return
+        unset BUS_INTERFACE
+        return 1
     elif [ "$selection" -lt "${#methods[@]}" ]; then
-        echo "Selected Method: ${methods[$selection]}"
-    else
+        BUS_METHOD=${methods[$selection]}
+        dialog --title "Selected Method: $BUS_METHOD" --msgbox "FIXME: create method dialog and show response?" 0 0
+    elif [ $(( selection - ${#methods[@]} )) -lt "${#properties[@]}" ]; then
         local property_idx=$(( selection - ${#methods[@]} ))
         BUS_PROPERTY="${properties[$property_idx]}"
-        echo "Selected Property: $BUS_PROPERTY"
-        busctl "$BUS_TYPE" get-property "$BUS_NAME" "$BUS_OBJECT" "$BUS_INTERFACE" "$BUS_PROPERTY"
+        # FIXME: Can be also write property
+        local property_value=$(busctl "$BUS_TYPE" get-property "$BUS_NAME" "$BUS_OBJECT" "$BUS_INTERFACE" "$BUS_PROPERTY")
+        dialog --title "Selected Property: $BUS_PROPERTY" --msgbox "$property_value" 0 0
+    else
+        local signal_idx=$(( selection - ${#methods[@]} - ${#properties[@]} ))
+        BUS_SIGNAL="${signals[signal_idx]}"
+        dialog --title "Selected Signal $BUS_SIGNAL" --msgbox "FIXME: emit signal?" 0 0
+
     fi
 }
 
@@ -140,27 +197,35 @@ if ! command -v dialog &> /dev/null; then
     exit 1
 fi
 
-if [ -z "$BUS_TYPE" ]; then
-    select_bus_type
-fi
+while /bin/true; do
 
-if [ -z "$BUS_NAME" ]; then
-    select_bus
-fi
+    if [ -z "$BUS_TYPE" ]; then
+        if ! select_bus_type; then
+            break
+        fi
+    fi
 
-if [ -z "$BUS_OBJECT" ]; then
-    select_object
-fi
+    if [ -z "$BUS_NAME" ]; then
+        if ! select_bus; then
+            continue
+        fi
+    fi
 
-if [ -z "$BUS_INTERFACE" ]; then
-    select_interface
-fi
+    if [ -z "$BUS_OBJECT" ]; then
+        if ! select_object; then
+            continue;
+        fi
+    fi
 
+    if [ -z "$BUS_INTERFACE" ]; then
+        if ! select_interface; then
+            continue
+        fi
+    fi
 
-select_method_or_property
+    select_method_or_property
 
-#echo BUS_TYPE=$BUS_TYPE BUS_NAME=$BUS_NAME BUS_OBJECT=$BUS_OBJECT BUS_INTERFACE=$BUS_INTERFACE
-#busctl "$BUS_TYPE" --xml-interface introspect "$BUS_NAME" "$BUS_OBJECT"|xmllint  -format -
-#set -x
+    #echo BUS_TYPE=$BUS_TYPE BUS_NAME=$BUS_NAME BUS_OBJECT=$BUS_OBJECT BUS_INTERFACE=$BUS_INTERFACE
+    #busctl "$BUS_TYPE" --xml-interface introspect "$BUS_NAME" "$BUS_OBJECT"|xmllint  -format -
 
-
+done
