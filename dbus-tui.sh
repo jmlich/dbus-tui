@@ -140,7 +140,6 @@ function select_method_or_property() {
     IFS=$'\n' read -r -d '' -a methods < <(xmllint --xpath "//interface[@name=\"$BUS_INTERFACE\"]/method/@name" - <<< "$interface" 2>/dev/null | awk -F'"' '{for (i=2; i<=NF; i+=2) print $(i)}' && printf '\0')
     IFS=$'\n' read -r -d '' -a properties < <(xmllint --xpath "//interface[@name=\"$BUS_INTERFACE\"]/property/@name" - <<< "$interface" 2>/dev/null | awk -F'"' '{for (i=2; i<=NF; i+=2) print $(i)}' && printf '\0')
     IFS=$'\n' read -r -d '' -a signals < <(xmllint --xpath "//interface[@name=\"$BUS_INTERFACE\"]/signal/@name" - <<< "$interface" 2>/dev/null | awk -F'"' '{for (i=2; i<=NF; i+=2) print $(i)}' && printf '\0')
-    declare -p signals >&2
 
     # Prepare dialog menu items
     declare -a dialog_items=()
@@ -189,6 +188,7 @@ function select_method_or_property() {
         property_signature="$(xmllint --xpath "//interface[@name=\"$BUS_INTERFACE\"]/property[@name=\"$BUS_PROPERTY\"]" - <<< "$interface")"
 
         # FIXME: Can be also write property
+        echo busctl "$BUS_TYPE" get-property "$BUS_NAME" "$BUS_OBJECT" "$BUS_INTERFACE" "$BUS_PROPERTY" >&2
         property_value="$(busctl "$BUS_TYPE" get-property "$BUS_NAME" "$BUS_OBJECT" "$BUS_INTERFACE" "$BUS_PROPERTY")"
         dialog --title "Selected Property: $BUS_PROPERTY" --msgbox "$property_signature\n\n$property_value" 0 0
     else
