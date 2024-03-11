@@ -69,7 +69,7 @@ function select_bus() {
 }
 
 function select_object() {
-    readarray -t bus_objects < <(busctl --system tree --list "$BUS_NAME")
+    readarray -t bus_objects < <(busctl "$BUS_TYPE" tree --list "$BUS_NAME")
 
     declare -a dialog_args=()
     for i in "${!bus_objects[@]}"; do
