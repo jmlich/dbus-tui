@@ -1,4 +1,6 @@
 #!/bin/bash
+# author: Jozef Mlich <jmlich83@gmail.com>
+# SPDX-License-Identifier: BSD-3-Clause
 
 #BUS_TYPE="--system"
 #BUS_NAME="org.bluez"
