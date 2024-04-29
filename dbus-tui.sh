@@ -135,6 +135,28 @@ function select_interface() {
     BUS_INTERFACE="${interfaces[$selection]}"
 }
 
+function write_property() {
+    data_type=${1:0:1}
+    default_value=${1:2}
+    exec 3>&1
+    value=$(dialog --clear \
+                   --title "Write $BUS_PROPERTY" \
+                   --inputbox "Please enter some text:" \
+                   0 0 "$default_value" \
+                   2>&1 1>&3)
+    exec 3>&-
+    if [ $? -ne 0]; then
+        return 1
+    fi
+
+    if [ -z "$value" ]; then
+        return 1
+    fi
+
+    busctl "$BUS_TYPE" set-property "$BUS_NAME" "$BUS_OBJECT" "$BUS_INTERFACE" "$BUS_PROPERTY" "$data_type" "$value"
+
+}
+
 function select_method_or_property() {
     # Retrieve methods and properties, store them into arrays
     local interface
@@ -189,10 +211,28 @@ function select_method_or_property() {
         BUS_PROPERTY="${properties[$property_idx]}"
         property_signature="$(xmllint --xpath "//interface[@name=\"$BUS_INTERFACE\"]/property[@name=\"$BUS_PROPERTY\"]" - <<< "$interface")"
 
-        # FIXME: Can be also write property
-        echo busctl "$BUS_TYPE" get-property "$BUS_NAME" "$BUS_OBJECT" "$BUS_INTERFACE" "$BUS_PROPERTY" >&2
+        property_access=$(xmllint --xpath "string(/property/@access)" - <<< "$property_signature") #"
+
+        case "$property_access" in
+            "readwrite")
+            ;&
+            "write")
+                extra_args=("--extra-button" "--extra-label" "Write")
+            ;;
+        esac
+
         property_value="$(busctl "$BUS_TYPE" get-property "$BUS_NAME" "$BUS_OBJECT" "$BUS_INTERFACE" "$BUS_PROPERTY")"
-        dialog --title "Selected Property: $BUS_PROPERTY" --msgbox "$property_signature\n\n$property_value" 0 0
+
+        dialog ${extra_args[@]} --title "Selected Property: $BUS_PROPERTY" --msgbox "$property_signature\n\n$property_value"  0 0
+        ret=$?
+        if [ "$ret" -eq 3 ]; then
+            write_property "$property_value"
+#        else
+#            echo busctl "$BUS_TYPE" get-property "$BUS_NAME" "$BUS_OBJECT" "$BUS_INTERFACE" "$BUS_PROPERTY" >&2
+#            echo $property_value >&2
+#            exit
+        fi
+
     else
         local signal_idx=$(( selection - ${#methods[@]} - ${#properties[@]} ))
         BUS_SIGNAL="${signals[signal_idx]}"
