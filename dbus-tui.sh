@@ -144,8 +144,9 @@ function write_property() {
                    --inputbox "Please enter some text:" \
                    0 0 "$default_value" \
                    2>&1 1>&3)
+    ret="$?"
     exec 3>&-
-    if [ $? -ne 0]; then
+    if [ "$ret" -ne 0]; then
         return 1
     fi
 
