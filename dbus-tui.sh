@@ -158,6 +158,60 @@ function write_property() {
 
 }
 
+function call_method() {
+    local method_signature="$1"
+
+    declare -a dialog_args=()
+    types=""
+
+    show_output=false
+
+    i=1
+    while read -r snippet; do
+        direction=$(xmllint --xpath '//arg/@direction' - 2>/dev/null  <<< "$snippet" | awk -F'"' '{for (i=2; i<=NF; i+=2) print $(i)}') #'
+        if [ "$direction" = "out" ]; then
+            show_output=true
+            continue
+        fi
+        name=$(xmllint --xpath '//arg/@name' - 2>/dev/null  <<< "$snippet" | awk -F'"' '{for (i=2; i<=NF; i+=2) print $(i)}') #'
+        type=$(xmllint --xpath '//arg/@type' - 2>/dev/null  <<< "$snippet" | awk -F'"' '{for (i=2; i<=NF; i+=2) print $(i)}') #'
+        dialog_args+=("${name:-(undefined)} ($type)" $i 1 "" $i 20 30 0)
+        types+="$type"
+        i=$((i + 1))
+    done < <(xmllint --xpath '//method/arg' - 2>/dev/null  <<< "$method_signature" && printf '\0')
+
+    if [ "${#dialog_args[@]}" -eq 0 ]; then
+        output=$(busctl "$BUS_TYPE" call "$BUS_NAME" "$BUS_OBJECT" "$BUS_INTERFACE" "$BUS_METHOD")
+        if [ "$show_output" = "true" ]; then
+            dialog --msgbox "$output" 10 50
+        fi
+        return $?
+    fi
+
+    local num_rows=$((i + 6))
+    local ret
+    exec 3>&1
+    output=$(dialog --clear \
+       --title "Call $BUS_METHOD" \
+       --form "Enter the details:" \
+       $num_rows 50 $i \
+       "${dialog_args[@]}" \
+       2>&1 1>&3) || ret=$?
+    exec 3>&-
+
+    if [ "0$ret" -ne 0 ]; then # Cancel was pressed
+        return 1
+    fi
+
+    readarray -t values <<< "$output"
+    output=$(busctl "$BUS_TYPE" call "$BUS_NAME" "$BUS_OBJECT" "$BUS_INTERFACE" "$BUS_METHOD" "$types" "${values[@]}")
+
+    if [ "$show_output" = "true" ]; then
+        dialog --msgbox "$output" 10 50
+    fi
+
+}
+
 function select_method_or_property() {
     # Retrieve methods and properties, store them into arrays
     local interface
@@ -204,9 +258,8 @@ function select_method_or_property() {
         return 1
     elif [ "$selection" -lt "${#methods[@]}" ]; then
         BUS_METHOD=${methods[$selection]}
-        method_signature="$(xmllint --xpath "//interface[@name=\"$BUS_INTERFACE\"]/method[@name=\"$BUS_METHOD\"]" - <<< "$interface")"
+        call_method "$(xmllint --xpath "//interface[@name=\"$BUS_INTERFACE\"]/method[@name=\"$BUS_METHOD\"]" - <<< "$interface")"
 
-        dialog --title "Selected Method: $BUS_METHOD" --msgbox "FIXME: create method dialog and show response?\n\n$method_signature" 0 0
     elif [ $(( selection - ${#methods[@]} )) -lt "${#properties[@]}" ]; then
         local property_idx=$(( selection - ${#methods[@]} ))
         BUS_PROPERTY="${properties[$property_idx]}"
@@ -232,7 +285,7 @@ function select_method_or_property() {
 #            echo busctl "$BUS_TYPE" get-property "$BUS_NAME" "$BUS_OBJECT" "$BUS_INTERFACE" "$BUS_PROPERTY" >&2
 #            echo $property_value >&2
 #            exit
-        fi
+    fi
 
     else
         local signal_idx=$(( selection - ${#methods[@]} - ${#properties[@]} ))
