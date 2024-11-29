@@ -7,6 +7,12 @@
 #BUS_OBJECT="/org/bluez/hci0"
 #BUS_INTERFACE="org.bluez.Adapter1"
 
+LAST_CONFIG_FN="/tmp/dbus-tui.config.sh"
+
+if [ -f "$LAST_CONFIG_FN" ]; then
+    source "$LAST_CONFIG_FN" || echo "Cannot load $LAST_CONFIG_FN" >&2
+fi
+
 function select_bus_type() {
 
     exec 3>&1
@@ -297,7 +303,8 @@ function select_method_or_property() {
 }
 
 function cleanup() {
-    echo "BUS_TYPE=\"$BUS_TYPE\"; BUS_NAME=\"$BUS_NAME\"; BUS_OBJECT=\"$BUS_OBJECT\"; BUS_INTERFACE=\"$BUS_INTERFACE\";"
+    declare -p BUS_TYPE BUS_NAME BUS_OBJECT BUS_INTERFACE > "$LAST_CONFIG_FN"
+    cat "$LAST_CONFIG_FN"
 }
 
 trap cleanup EXIT
