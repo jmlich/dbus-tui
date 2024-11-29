@@ -7,6 +7,11 @@
 #BUS_OBJECT="/org/bluez/hci0"
 #BUS_INTERFACE="org.bluez.Adapter1"
 
+BUS_TYPE=""
+BUS_NAME=""
+BUS_OBJECT=""
+BUS_INTERFACE=""
+
 LAST_CONFIG_FN="/tmp/dbus-tui.config.sh"
 
 if [ -f "$LAST_CONFIG_FN" ]; then
