@@ -192,7 +192,9 @@ function call_method() {
     done < <(xmllint --xpath '//method/arg' - 2>/dev/null  <<< "$method_signature" && printf '\0')
 
     if [ "${#dialog_args[@]}" -eq 0 ]; then
-        output=$(busctl "$BUS_TYPE" call "$BUS_NAME" "$BUS_OBJECT" "$BUS_INTERFACE" "$BUS_METHOD")
+        if ! output=$(busctl "$BUS_TYPE" call "$BUS_NAME" "$BUS_OBJECT" "$BUS_INTERFACE" "$BUS_METHOD"); then
+            sleep 3 # FIXME better error handling, now is error at least visible
+        fi
         if [ "$show_output" = "true" ]; then
             dialog --msgbox "$output" 10 50
         fi
